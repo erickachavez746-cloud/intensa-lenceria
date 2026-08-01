@@ -9,6 +9,7 @@ import {
   PieChart, Pie, Cell, Legend
 } from 'recharts';
 import { storage } from './storage.js';
+import { FaInstagram, FaTiktok, FaFacebook } from 'react-icons/fa6';
 
 /* ---------------------------------------------------------------
    TOKENS
@@ -48,6 +49,12 @@ const SCENT_COLOR = {
 };
 
 const CATEGORIES = ['Todos', 'Brasieres', 'Bragas de algodón', 'Tanguita VS', 'Hilo VS', 'Tanguita Pink', 'Encaje VS', 'Cremas y Lociones Corporales'];
+
+const SOCIAL_LINKS = [
+  { name: 'Instagram', url: 'https://www.instagram.com/intensa_.lenceria_?igsh=MmNlMjQzZmQ4OG4w', Icon: FaInstagram },
+  { name: 'TikTok', url: 'https://www.tiktok.com/@intensa_.lenceria_?_r=1&_t=ZS-98X0TL667TW', Icon: FaTiktok },
+  { name: 'Facebook', url: 'https://www.facebook.com/share/19NH12M1Hx/?mibextid=wwXIfr', Icon: FaFacebook },
+];
 
 // Si en el Sheet quedó guardado un nombre de categoría anterior (por ejemplo
 // tras un renombre), lo traducimos automáticamente al nombre actual.
@@ -792,6 +799,33 @@ function StoreView({ products, cat, setCat, search, setSearch, onAdd, whatsapp }
           {products.map((p) => <ProductCard key={p.id} product={p} onAdd={onAdd} />)}
         </div>
       )}
+
+      <SocialFooter />
+    </div>
+  );
+}
+
+function SocialFooter() {
+  return (
+    <div className="mt-16 pt-8 pb-4 text-center" style={{ borderTop: `1px solid ${C.line}` }}>
+      <p className="text-xs uppercase tracking-widest mb-3" style={{ color: C.brownMid }}>
+        Síguenos en nuestras redes
+      </p>
+      <div className="flex items-center justify-center gap-4">
+        {SOCIAL_LINKS.map(({ name, url, Icon }) => (
+          <a
+            key={name}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={name}
+            className="w-10 h-10 rounded-full flex items-center justify-center transition"
+            style={{ background: C.creamAlt, border: `1px solid ${C.line}`, color: C.brownDark }}
+          >
+            <Icon size={18} />
+          </a>
+        ))}
+      </div>
     </div>
   );
 }
