@@ -59,6 +59,12 @@ function setLocal(key, value) {
 export const storage = {
   isRemoteConfigured: !!BASE_URL,
 
+  // Lectura instantánea desde el navegador (sin esperar al Sheet), para
+  // pintar la pantalla al toque mientras los datos reales llegan detrás.
+  getLocalProducts(fallback) { return getLocal('il_products', fallback); },
+  getLocalOrders() { return getLocal('il_orders', []); },
+  getLocalConfig() { return getLocal('il_config', {}); },
+
   async getProducts(fallback) {
     const remote = await getRemote('products');
     if (remote) { setLocal('il_products', remote); return remote; }

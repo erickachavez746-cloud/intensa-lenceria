@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { storage } from './storage.js';
 import { FaInstagram, FaTiktok, FaFacebook } from 'react-icons/fa6';
+import logoImg from './assets/logo.jpeg';
 
 const DashboardTab = React.lazy(() => import('./DashboardTab.jsx'));
 
@@ -256,31 +257,11 @@ function Divider() {
 function Logo({ size = 'md' }) {
   const big = size === 'lg';
   return (
-    <div className="flex flex-col items-center">
-      <span
-        style={{
-          fontFamily: "'Playfair Display', serif",
-          fontStyle: 'italic',
-          fontWeight: 700,
-          fontSize: big ? 40 : 22,
-          color: C.brownDark,
-          lineHeight: 1,
-        }}
-      >
-        Intensa
-      </span>
-      <span
-        style={{
-          fontFamily: "'Playfair Display', serif",
-          fontWeight: 600,
-          letterSpacing: big ? 6 : 3,
-          fontSize: big ? 22 : 12,
-          color: C.brownDark,
-        }}
-      >
-        LENCERÍA
-      </span>
-    </div>
+    <img
+      src={logoImg}
+      alt="Intensa Lencería"
+      style={{ height: big ? 110 : 44, width: 'auto', objectFit: 'contain' }}
+    />
   );
 }
 
@@ -333,18 +314,37 @@ export default function App() {
 
   /* ---------- load ---------- */
   useEffect(() => {
+    // 1) Pintamos al instante con lo último que quedó guardado en este
+    //    navegador, para que la tienda no se sienta lenta mientras
+    //    llegan los datos frescos del Sheet.
+    const cachedProducts = storage.getLocalProducts(SEED_PRODUCTS)
+      .map((prod) => ({ ...prod, cat: normalizeCategory(prod.cat) }));
+    setProducts(cachedProducts);
+    setOrders(storage.getLocalOrders());
+    const cachedConfig = storage.getLocalConfig();
+    setQrImage(cachedConfig.qrImage || null);
+    setBankNote(cachedConfig.bankNote || '');
+    setWhatsapp(cachedConfig.whatsapp || '');
+    setAdminPin(cachedConfig.adminPin || '1234');
+    setLoading(false);
+
+    // 2) En paralelo (no uno detrás de otro) traemos los datos reales
+    //    del Sheet y actualizamos en cuanto lleguen.
     (async () => {
       try {
-        const raw = await storage.getProducts(SEED_PRODUCTS);
+        const [raw, o, conf] = await Promise.all([
+          storage.getProducts(SEED_PRODUCTS),
+          storage.getOrders(),
+          storage.getConfig(),
+        ]);
+
         const p = raw.map((prod) => ({ ...prod, cat: normalizeCategory(prod.cat) }));
         setProducts(p);
         const changed = raw.some((prod, i) => prod.cat !== p[i].cat);
         if (changed) storage.saveProducts(p); // corrige el Sheet en segundo plano
 
-        const o = await storage.getOrders();
         setOrders(o);
 
-        const conf = await storage.getConfig();
         if (conf) {
           setQrImage(conf.qrImage || null);
           setBankNote(conf.bankNote || '');
@@ -352,9 +352,7 @@ export default function App() {
           setAdminPin(conf.adminPin || '1234');
         }
       } catch (e) {
-        console.error('Error cargando datos', e);
-      } finally {
-        setLoading(false);
+        console.error('Error cargando datos del Sheet', e);
       }
     })();
   }, []);
