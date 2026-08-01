@@ -257,11 +257,31 @@ function Divider() {
 function Logo({ size = 'md' }) {
   const big = size === 'lg';
   return (
-    <img
-      src={logoImg}
-      alt="Intensa Lencería"
-      style={{ height: big ? 110 : 44, width: 'auto', objectFit: 'contain' }}
-    />
+    <div className="flex flex-col items-center">
+      <span
+        style={{
+          fontFamily: "'Playfair Display', serif",
+          fontStyle: 'italic',
+          fontWeight: 700,
+          fontSize: big ? 40 : 22,
+          color: C.brownDark,
+          lineHeight: 1,
+        }}
+      >
+        Intensa
+      </span>
+      <span
+        style={{
+          fontFamily: "'Playfair Display', serif",
+          fontWeight: 600,
+          letterSpacing: big ? 6 : 3,
+          fontSize: big ? 22 : 12,
+          color: C.brownDark,
+        }}
+      >
+        LENCERÍA
+      </span>
+    </div>
   );
 }
 
@@ -568,6 +588,20 @@ export default function App() {
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-thumb { background: ${C.line}; border-radius: 8px; }
       `}</style>
+
+      {/* MARCA DE AGUA */}
+      <img
+        src={logoImg}
+        alt=""
+        aria-hidden="true"
+        className="fixed top-1/2 left-1/2 pointer-events-none select-none"
+        style={{
+          width: 'min(70vw, 620px)',
+          transform: 'translate(-50%, -50%)',
+          opacity: 0.06,
+          zIndex: 0,
+        }}
+      />
 
       {/* HEADER */}
       <header className="sticky top-0 z-30" style={{ background: C.creamAlt, borderBottom: `1px solid ${C.line}` }}>
