@@ -124,7 +124,7 @@ function readConfig_() {
   const sheet = getSheet_('config');
   const values = sheet.getDataRange().getValues();
   const conf = {};
-  values.slice(1).forEach(function (r) { if (r[0]) conf[r[0]] = r[1]; });
+  values.slice(1).forEach(function (r) { if (r[0]) conf[r[0]] = String(r[1]); });
   return conf;
 }
 
@@ -132,8 +132,12 @@ function writeConfig_(conf) {
   const sheet = getSheet_('config');
   sheet.clearContents();
   sheet.appendRow(SHEETS.config.headers);
-  const rows = Object.keys(conf).map(function (k) { return [k, conf[k]]; });
-  if (rows.length) sheet.getRange(2, 1, rows.length, 2).setValues(rows);
+  const rows = Object.keys(conf).map(function (k) { return [k, String(conf[k])]; });
+  if (rows.length) {
+    const range = sheet.getRange(2, 1, rows.length, 2);
+    range.setNumberFormat('@'); // texto plano: evita que Sheets convierta números de teléfono, PIN, etc.
+    range.setValues(rows);
+  }
 }
 
 function jsonResponse_(obj) {

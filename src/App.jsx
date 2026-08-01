@@ -540,7 +540,7 @@ export default function App() {
     };
     await saveOrders([order, ...orders]);
 
-    const waTargets = [whatsapp, whatsapp2].map((n) => (n || '').replace(/[^0-9]/g, '')).filter(Boolean);
+    const waTargets = [whatsapp, whatsapp2].map((n) => String(n || '').replace(/[^0-9]/g, '')).filter(Boolean);
     if (waTargets.length > 0) {
       const lines = [
         `Nuevo pedido de ${order.customer} (${order.phone})`,
@@ -934,7 +934,7 @@ export default function App() {
 ---------------------------------------------------------------- */
 function StoreView({ products, cat, setCat, search, setSearch, onAdd, whatsapp, whatsapp2 }) {
   const waNumbers = [whatsapp, whatsapp2]
-    .map((n) => (n || '').replace(/[^0-9]/g, ''))
+    .map((n) => String(n || '').replace(/[^0-9]/g, ''))
     .filter(Boolean);
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
