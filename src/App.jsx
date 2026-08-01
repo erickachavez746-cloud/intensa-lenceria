@@ -244,6 +244,44 @@ function resizeImageFile(file) {
   });
 }
 
+// Para el QR usamos PNG (sin pérdida) en vez de JPEG: un código QR es blanco
+// y negro, así que PNG comprime muy bien igual, y evitamos que se vea
+// borroso o deje de poder escanearse por la compresión.
+function resizeQrImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new window.Image();
+      img.onload = () => {
+        const widths = [520, 420, 340, 260, 200];
+        let result = null;
+        for (const w of widths) {
+          const scale = Math.min(1, w / img.width);
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(img.width * scale));
+          canvas.height = Math.max(1, Math.round(img.height * scale));
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const candidate = canvas.toDataURL('image/png');
+          result = candidate;
+          if (candidate.length <= MAX_IMAGE_CHARS) break;
+        }
+        if (result.length > MAX_IMAGE_CHARS) {
+          reject(new Error('La imagen del QR sigue siendo muy pesada. Recórtala más de cerca (solo el cuadro del QR, sin fondo extra) y vuelve a intentar.'));
+          return;
+        }
+        resolve(result);
+      };
+      img.onerror = () => reject(new Error('No se pudo leer esa imagen.'));
+      img.src = reader.result;
+    };
+    reader.onerror = () => reject(new Error('No se pudo leer ese archivo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 function Divider() {
   return (
     <div className="flex items-center gap-3 my-4">
@@ -293,9 +331,15 @@ export default function App() {
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [qrImage, setQrImage] = useState(null);
+  const [qrImageLociones, setQrImageLociones] = useState(null);
+  const [qrError2, setQrError2] = useState(null);
   const [bankNote, setBankNote] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
-  const [adminPin, setAdminPin] = useState('1234');
+  const [whatsapp2, setWhatsapp2] = useState('');
+  const [waError, setWaError] = useState(null);
+  const [adminPin, setAdminPin] = useState(() => {
+    try { return localStorage.getItem('il_admin_pin') || '0622'; } catch { return '0622'; }
+  });
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
@@ -329,7 +373,7 @@ export default function App() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [confirmMsg, setConfirmMsg] = useState(null);
-  const [lastOrderWaLink, setLastOrderWaLink] = useState(null);
+  const [lastOrderWaLinks, setLastOrderWaLinks] = useState([]);
   const fileRef = useRef(null);
 
   /* ---------- load ---------- */
@@ -343,9 +387,11 @@ export default function App() {
     setOrders(storage.getLocalOrders());
     const cachedConfig = storage.getLocalConfig();
     setQrImage(cachedConfig.qrImage || null);
+    setQrImageLociones(cachedConfig.qrImageLociones || null);
     setBankNote(cachedConfig.bankNote || '');
     setWhatsapp(cachedConfig.whatsapp || '');
-    setAdminPin(cachedConfig.adminPin || '1234');
+    setWhatsapp2(cachedConfig.whatsapp2 || '');
+    // el PIN NO se toma de aquí — vive solo en este navegador (ver más abajo)
     setLoading(false);
 
     // 2) En paralelo (no uno detrás de otro) traemos los datos reales
@@ -367,9 +413,11 @@ export default function App() {
 
         if (conf) {
           setQrImage(conf.qrImage || null);
+          setQrImageLociones(conf.qrImageLociones || null);
           setBankNote(conf.bankNote || '');
           setWhatsapp(conf.whatsapp || '');
-          setAdminPin(conf.adminPin || '1234');
+          setWhatsapp2(conf.whatsapp2 || '');
+          // el PIN no viene del Sheet, se maneja aparte por dispositivo
         }
       } catch (e) {
         console.error('Error cargando datos del Sheet', e);
@@ -418,7 +466,7 @@ export default function App() {
   };
 
   const saveConfig = async (next) => {
-    await storage.saveConfig(next);
+    return storage.saveConfig(next);
   };
 
   /* ---------- cart ---------- */
@@ -478,8 +526,8 @@ export default function App() {
     };
     await saveOrders([order, ...orders]);
 
-    const waDigits = (whatsapp || '').replace(/[^0-9]/g, '');
-    if (waDigits) {
+    const waTargets = [whatsapp, whatsapp2].map((n) => (n || '').replace(/[^0-9]/g, '')).filter(Boolean);
+    if (waTargets.length > 0) {
       const lines = [
         `Nuevo pedido de ${order.customer} (${order.phone})`,
         ...items.map((i) => `• ${i.name} (${i.color}) talla ${i.talla} x${i.qty} - Bs ${(i.price * i.qty).toFixed(0)}`),
@@ -487,16 +535,17 @@ export default function App() {
         order.address ? `Dirección: ${order.address}` : null,
         order.location ? `Ubicación GPS: https://maps.google.com/?q=${order.location.lat},${order.location.lng}` : null,
       ].filter(Boolean);
-      setLastOrderWaLink(`https://wa.me/${waDigits}?text=${encodeURIComponent(lines.join('\n'))}`);
+      const text = encodeURIComponent(lines.join('\n'));
+      setLastOrderWaLinks(waTargets.map((digits) => `https://wa.me/${digits}?text=${text}`));
     } else {
-      setLastOrderWaLink(null);
+      setLastOrderWaLinks([]);
     }
 
     setCart([]);
     setCheckoutOpen(false);
     setCartOpen(false);
     setConfirmMsg('¡Pedido registrado! Verificaremos tu pago y confirmaremos tu compra.');
-    setTimeout(() => { setConfirmMsg(null); setLastOrderWaLink(null); }, 12000);
+    setTimeout(() => { setConfirmMsg(null); setLastOrderWaLinks([]); }, 12000);
   };
 
   const confirmOrder = async (orderId) => {
@@ -528,15 +577,38 @@ export default function App() {
     await saveProducts([{ ...p, id: uid() }, ...products]);
   };
 
+  const [qrError, setQrError] = useState(null);
+
   const handleQrUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      setQrImage(reader.result);
-      await saveConfig({ qrImage: reader.result, bankNote, adminPin, whatsapp });
-    };
-    reader.readAsDataURL(file);
+    setQrError(null);
+    resizeQrImage(file)
+      .then(async (dataUrl) => {
+        setQrImage(dataUrl);
+        const ok = await saveConfig({ qrImage: dataUrl, qrImageLociones, bankNote, whatsapp, whatsapp2 });
+        if (!ok) setQrError('No se guardó en el Sheet. Vuelve a intentar en unos segundos.');
+      })
+      .catch((err) => {
+        console.error('Error procesando QR', err);
+        setQrError(err.message || 'No se pudo procesar esa imagen.');
+      });
+  };
+
+  const handleQrUpload2 = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setQrError2(null);
+    resizeQrImage(file)
+      .then(async (dataUrl) => {
+        setQrImageLociones(dataUrl);
+        const ok = await saveConfig({ qrImage, qrImageLociones: dataUrl, bankNote, whatsapp, whatsapp2 });
+        if (!ok) setQrError2('No se guardó en el Sheet. Vuelve a intentar en unos segundos.');
+      })
+      .catch((err) => {
+        console.error('Error procesando QR', err);
+        setQrError2(err.message || 'No se pudo procesar esa imagen.');
+      });
   };
 
   /* ---------- derived: dashboard ---------- */
@@ -688,17 +760,18 @@ export default function App() {
             <div className="flex items-center gap-2">
               <Check size={16} /> {confirmMsg}
             </div>
-            {lastOrderWaLink && (
+            {lastOrderWaLinks.map((link, i) => (
               <a
-                href={lastOrderWaLink}
+                key={link}
+                href={link}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
                 style={{ background: '#25D366', color: '#fff' }}
               >
-                <MessageCircle size={14} /> Avisar por WhatsApp
+                <MessageCircle size={14} /> {lastOrderWaLinks.length > 1 ? `Avisar por WhatsApp ${i + 1}` : 'Avisar por WhatsApp'}
               </a>
-            )}
+            ))}
           </div>
         </div>
       )}
@@ -710,6 +783,7 @@ export default function App() {
           search={search} setSearch={setSearch}
           onAdd={addToCart}
           whatsapp={whatsapp}
+          whatsapp2={whatsapp2}
         />
       ) : !adminUnlocked ? (
         <div className="max-w-sm mx-auto px-4 py-16 text-center">
@@ -733,8 +807,7 @@ export default function App() {
           >
             Entrar
           </button>
-          <p className="text-[11px] opacity-50 mt-6">PIN por defecto: 1234. Cámbialo en Configuración una vez dentro.</p>
-        </div>
+                  </div>
       ) : (
         <AdminView
           adminTab={adminTab} setAdminTab={setAdminTab}
@@ -751,16 +824,25 @@ export default function App() {
           catPie={catPie}
           pieColors={PIE_COLORS}
           qrImage={qrImage}
+          qrImageLociones={qrImageLociones}
           bankNote={bankNote}
           setBankNote={setBankNote}
           onQrUpload={handleQrUpload}
-          onSaveBankNote={() => saveConfig({ qrImage, bankNote, adminPin, whatsapp })}
+          onQrUpload2={handleQrUpload2}
+          qrError={qrError}
+          qrError2={qrError2}
+          onSaveBankNote={() => saveConfig({ qrImage, qrImageLociones, bankNote, whatsapp, whatsapp2 })}
           adminPin={adminPin}
           setAdminPin={setAdminPin}
-          onSavePin={(newPin) => { setAdminPin(newPin); saveConfig({ qrImage, bankNote, adminPin: newPin, whatsapp }); }}
+          onSavePin={(newPin) => { setAdminPin(newPin); try { localStorage.setItem('il_admin_pin', newPin); } catch {} }}
           whatsapp={whatsapp}
-          setWhatsapp={setWhatsapp}
-          onSaveWhatsapp={(newWa) => { setWhatsapp(newWa); saveConfig({ qrImage, bankNote, adminPin, whatsapp: newWa }); }}
+          whatsapp2={whatsapp2}
+          waError={waError}
+          onSaveWhatsapp={async (newWa, newWa2) => {
+            setWhatsapp(newWa); setWhatsapp2(newWa2); setWaError(null);
+            const ok = await saveConfig({ qrImage, qrImageLociones, bankNote, whatsapp: newWa, whatsapp2: newWa2 });
+            if (!ok) setWaError('No se guardó en el Sheet. Vuelve a intentar en unos segundos.');
+          }}
           csvStatus={csvStatus}
           onExportCSV={exportInventoryCSV}
           onImportCSV={importInventoryCSV}
@@ -822,6 +904,8 @@ export default function App() {
         <CheckoutModal
           total={cartTotal}
           qrImage={qrImage}
+          qrImageLociones={qrImageLociones}
+          cartCategories={cartDetailed.map((i) => i.product.cat)}
           bankNote={bankNote}
           onClose={() => setCheckoutOpen(false)}
           onSubmit={submitOrder}
@@ -834,21 +918,30 @@ export default function App() {
 /* ---------------------------------------------------------------
    STORE VIEW
 ---------------------------------------------------------------- */
-function StoreView({ products, cat, setCat, search, setSearch, onAdd, whatsapp }) {
-  const waDigits = (whatsapp || '').replace(/[^0-9]/g, '');
+function StoreView({ products, cat, setCat, search, setSearch, onAdd, whatsapp, whatsapp2 }) {
+  const waNumbers = [whatsapp, whatsapp2]
+    .map((n) => (n || '').replace(/[^0-9]/g, ''))
+    .filter(Boolean);
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
-      {waDigits && (
-        <a
-          href={`https://wa.me/${waDigits}?text=${encodeURIComponent('Hola, quiero consultar sobre un producto de Intensa Lencería')}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 px-4 py-3 rounded-full shadow-lg"
-          style={{ background: '#25D366', color: '#fff' }}
-        >
-          <MessageCircle size={20} />
-          <span className="text-sm font-semibold hidden sm:inline">Escríbenos</span>
-        </a>
+      {waNumbers.length > 0 && (
+        <div className="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2">
+          {waNumbers.map((digits, i) => (
+            <a
+              key={digits}
+              href={`https://wa.me/${digits}?text=${encodeURIComponent('Hola, quiero consultar sobre un producto de Intensa Lencería')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-4 py-3 rounded-full shadow-lg"
+              style={{ background: '#25D366', color: '#fff' }}
+            >
+              <MessageCircle size={20} />
+              <span className="text-sm font-semibold hidden sm:inline">
+                {waNumbers.length > 1 ? `Escríbenos ${i + 1}` : 'Escríbenos'}
+              </span>
+            </a>
+          ))}
+        </div>
       )}
       <div className="text-center mb-6">
         <p style={{ fontFamily: "'Playfair Display', serif", fontStyle: 'italic', fontSize: 15, color: C.brownMid }}>
@@ -1032,9 +1125,19 @@ function ProductCard({ product, onAdd }) {
 ---------------------------------------------------------------- */
 const LocationPicker = React.lazy(() => import('./LocationPicker.jsx'));
 
-function CheckoutModal({ total, qrImage, bankNote, onClose, onSubmit }) {
+function CheckoutModal({ total, qrImage, qrImageLociones, cartCategories, bankNote, onClose, onSubmit }) {
   const [form, setForm] = useState({ name: '', phone: '', address: '', ref: '', location: null });
   const canSubmit = form.name.trim() && form.phone.trim();
+
+  const hasLociones = (cartCategories || []).includes('Cremas y Lociones Corporales');
+  const hasLenceria = (cartCategories || []).some((c) => c !== 'Cremas y Lociones Corporales');
+  const qrsToShow = [];
+  if (hasLenceria && qrImage) qrsToShow.push({ label: 'Lencería', img: qrImage });
+  if (hasLociones && qrImageLociones) qrsToShow.push({ label: 'Cremas y lociones', img: qrImageLociones });
+  // Si el carrito mezcla categorías pero solo hay un QR configurado, lo mostramos igual.
+  if (qrsToShow.length === 0 && (qrImage || qrImageLociones)) {
+    qrsToShow.push({ label: null, img: qrImage || qrImageLociones });
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(43,33,24,0.5)' }}>
@@ -1045,9 +1148,18 @@ function CheckoutModal({ total, qrImage, bankNote, onClose, onSubmit }) {
         </div>
 
         <div className="rounded-xl p-4 mb-4 text-center" style={{ background: C.cream }}>
-          <p className="text-xs opacity-70 mb-2">Escanea el QR o transfiere el total</p>
-          {qrImage ? (
-            <img src={qrImage} alt="QR de pago" className="w-40 h-40 object-contain mx-auto rounded-lg" />
+          <p className="text-xs opacity-70 mb-2">
+            {qrsToShow.length > 1 ? 'Escanea el QR correspondiente a cada parte de tu pedido' : 'Escanea el QR o transfiere el total'}
+          </p>
+          {qrsToShow.length > 0 ? (
+            <div className={qrsToShow.length > 1 ? 'flex justify-center gap-4' : ''}>
+              {qrsToShow.map((qr, i) => (
+                <div key={i}>
+                  <img src={qr.img} alt={qr.label ? `QR ${qr.label}` : 'QR de pago'} className="w-36 h-36 object-contain mx-auto rounded-lg" />
+                  {qr.label && <p className="text-[11px] mt-1 opacity-70">{qr.label}</p>}
+                </div>
+              ))}
+            </div>
           ) : (
             <div className="w-40 h-40 mx-auto rounded-lg flex items-center justify-center" style={{ background: C.line }}>
               <QrCode size={40} style={{ color: C.brownMid }} />
@@ -1422,23 +1534,43 @@ function OrdersTab({ orders, onConfirmOrder, onCancelOrder }) {
   );
 }
 
-function ConfigTab({ qrImage, bankNote, setBankNote, onQrUpload, onSaveBankNote, adminPin, onSavePin, whatsapp, onSaveWhatsapp, csvStatus, onExportCSV, onImportCSV }) {
+function ConfigTab({ qrImage, qrImageLociones, bankNote, setBankNote, onQrUpload, onQrUpload2, onSaveBankNote, adminPin, onSavePin, whatsapp, whatsapp2, onSaveWhatsapp, waError, csvStatus, onExportCSV, onImportCSV, qrError, qrError2 }) {
   const fileRef = useRef(null);
+  const fileRef2 = useRef(null);
   const csvFileRef = useRef(null);
   const [pinField, setPinField] = useState(adminPin);
   const [pinSaved, setPinSaved] = useState(false);
   const [waField, setWaField] = useState(whatsapp);
+  const [waField2, setWaField2] = useState(whatsapp2);
   const [waSaved, setWaSaved] = useState(false);
   return (
     <div className="max-w-md">
       <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, color: C.brownDark }} className="mb-4">Datos de pago</h2>
       <div className="rounded-xl p-4 mb-4" style={{ background: C.creamAlt, border: `1px solid ${C.line}` }}>
-        <p className="text-xs opacity-70 mb-2">QR de cobro (se mostrará en el checkout)</p>
-        {qrImage && <img src={qrImage} alt="QR actual" className="w-32 h-32 object-contain rounded-lg mb-3" style={{ border: `1px solid ${C.line}` }} />}
+        <p className="text-xs opacity-70 mb-2">QR de cobro — Lencería</p>
+        {qrImage && <img src={qrImage} alt="QR lencería" className="w-32 h-32 object-contain rounded-lg mb-3" style={{ border: `1px solid ${C.line}` }} />}
         <input ref={fileRef} type="file" accept="image/*" onChange={onQrUpload} className="hidden" />
         <button onClick={() => fileRef.current?.click()} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full" style={{ background: C.brownDark, color: C.creamAlt }}>
-          <Upload size={13} /> Subir imagen QR
+          <Upload size={13} /> Subir QR de lencería
         </button>
+        {qrError ? (
+          <p className="text-[11px] mt-2" style={{ color: C.danger }}>{qrError}</p>
+        ) : qrImage ? (
+          <p className="text-[11px] mt-2" style={{ color: C.okText }}>QR guardado</p>
+        ) : null}
+      </div>
+      <div className="rounded-xl p-4 mb-4" style={{ background: C.creamAlt, border: `1px solid ${C.line}` }}>
+        <p className="text-xs opacity-70 mb-2">QR de cobro — Cremas y Lociones Corporales</p>
+        {qrImageLociones && <img src={qrImageLociones} alt="QR cremas y lociones" className="w-32 h-32 object-contain rounded-lg mb-3" style={{ border: `1px solid ${C.line}` }} />}
+        <input ref={fileRef2} type="file" accept="image/*" onChange={onQrUpload2} className="hidden" />
+        <button onClick={() => fileRef2.current?.click()} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full" style={{ background: C.brownDark, color: C.creamAlt }}>
+          <Upload size={13} /> Subir QR de cremas y lociones
+        </button>
+        {qrError2 ? (
+          <p className="text-[11px] mt-2" style={{ color: C.danger }}>{qrError2}</p>
+        ) : qrImageLociones ? (
+          <p className="text-[11px] mt-2" style={{ color: C.okText }}>QR guardado</p>
+        ) : null}
       </div>
       <div className="rounded-xl p-4" style={{ background: C.creamAlt, border: `1px solid ${C.line}` }}>
         <p className="text-xs opacity-70 mb-2">Nota para el cliente (banco, número de cuenta, titular, etc.)</p>
@@ -1455,25 +1587,36 @@ function ConfigTab({ qrImage, bankNote, setBankNote, onQrUpload, onSaveBankNote,
       </div>
 
       <div className="rounded-xl p-4 mt-4" style={{ background: C.creamAlt, border: `1px solid ${C.line}` }}>
-        <p className="text-xs opacity-70 mb-2">Número de WhatsApp para contacto directo</p>
-        <p className="text-[11px] opacity-50 mb-2">Aparece como un botón flotante en la tienda. Escríbelo con código de país, solo números (ej: 59171234567).</p>
-        <div className="flex gap-2">
+        <p className="text-xs opacity-70 mb-2">Números de WhatsApp para contacto directo</p>
+        <p className="text-[11px] opacity-50 mb-2">Aparecen como botones flotantes en la tienda, y también reciben el aviso de pedidos nuevos. Código de país, solo números (ej: 59171234567). El segundo es opcional.</p>
+        <div className="space-y-2 mb-2">
           <input
             value={waField}
             onChange={(e) => { setWaField(e.target.value); setWaSaved(false); }}
-            placeholder="59171234567"
-            className="flex-1 px-3 py-2 rounded-lg text-xs outline-none"
+            placeholder="59171234567 (principal)"
+            className="w-full px-3 py-2 rounded-lg text-xs outline-none"
             style={{ background: C.cream, border: `1px solid ${C.line}` }}
           />
-          <button
-            onClick={() => { onSaveWhatsapp(waField); setWaSaved(true); }}
-            className="text-xs font-semibold px-3 py-2 rounded-full"
-            style={{ background: C.brownDark, color: C.creamAlt }}
-          >
-            Guardar
-          </button>
+          <input
+            value={waField2}
+            onChange={(e) => { setWaField2(e.target.value); setWaSaved(false); }}
+            placeholder="59178945612 (opcional)"
+            className="w-full px-3 py-2 rounded-lg text-xs outline-none"
+            style={{ background: C.cream, border: `1px solid ${C.line}` }}
+          />
         </div>
-        {waSaved && <p className="text-[11px] mt-2" style={{ color: C.okText }}>Número actualizado</p>}
+        <button
+          onClick={async () => { await onSaveWhatsapp(waField, waField2); setWaSaved(true); }}
+          className="text-xs font-semibold px-3 py-2 rounded-full"
+          style={{ background: C.brownDark, color: C.creamAlt }}
+        >
+          Guardar
+        </button>
+        {waError ? (
+          <p className="text-[11px] mt-2" style={{ color: C.danger }}>{waError}</p>
+        ) : waSaved ? (
+          <p className="text-[11px] mt-2" style={{ color: C.okText }}>Números actualizados</p>
+        ) : null}
       </div>
 
       <div className="rounded-xl p-4 mt-4" style={{ background: C.creamAlt, border: `1px solid ${C.line}` }}>
