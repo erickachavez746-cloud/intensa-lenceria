@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   ShoppingBag, Package, BarChart3, Settings, Plus, Trash2, Check, X,
   QrCode, Minus, ChevronRight, Search, Store, ClipboardList, Upload,
-  AlertCircle, ArrowLeft, Sparkles
+  AlertCircle, ArrowLeft, Sparkles, MessageCircle
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -288,6 +288,7 @@ export default function App() {
   const [orders, setOrders] = useState([]);
   const [qrImage, setQrImage] = useState(null);
   const [bankNote, setBankNote] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
   const [adminPin, setAdminPin] = useState('1234');
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [pinInput, setPinInput] = useState('');
@@ -341,6 +342,7 @@ export default function App() {
         if (conf) {
           setQrImage(conf.qrImage || null);
           setBankNote(conf.bankNote || '');
+          setWhatsapp(conf.whatsapp || '');
           setAdminPin(conf.adminPin || '1234');
         }
       } catch (e) {
@@ -492,7 +494,7 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = async () => {
       setQrImage(reader.result);
-      await saveConfig({ qrImage: reader.result, bankNote, adminPin });
+      await saveConfig({ qrImage: reader.result, bankNote, adminPin, whatsapp });
     };
     reader.readAsDataURL(file);
   };
@@ -606,6 +608,7 @@ export default function App() {
           cat={cat} setCat={setCat}
           search={search} setSearch={setSearch}
           onAdd={addToCart}
+          whatsapp={whatsapp}
         />
       ) : !adminUnlocked ? (
         <div className="max-w-sm mx-auto px-4 py-16 text-center">
@@ -650,10 +653,13 @@ export default function App() {
           bankNote={bankNote}
           setBankNote={setBankNote}
           onQrUpload={handleQrUpload}
-          onSaveBankNote={() => saveConfig({ qrImage, bankNote, adminPin })}
+          onSaveBankNote={() => saveConfig({ qrImage, bankNote, adminPin, whatsapp })}
           adminPin={adminPin}
           setAdminPin={setAdminPin}
-          onSavePin={(newPin) => { setAdminPin(newPin); saveConfig({ qrImage, bankNote, adminPin: newPin }); }}
+          onSavePin={(newPin) => { setAdminPin(newPin); saveConfig({ qrImage, bankNote, adminPin: newPin, whatsapp }); }}
+          whatsapp={whatsapp}
+          setWhatsapp={setWhatsapp}
+          onSaveWhatsapp={(newWa) => { setWhatsapp(newWa); saveConfig({ qrImage, bankNote, adminPin, whatsapp: newWa }); }}
           csvStatus={csvStatus}
           onExportCSV={exportInventoryCSV}
           onImportCSV={importInventoryCSV}
@@ -727,9 +733,22 @@ export default function App() {
 /* ---------------------------------------------------------------
    STORE VIEW
 ---------------------------------------------------------------- */
-function StoreView({ products, cat, setCat, search, setSearch, onAdd }) {
+function StoreView({ products, cat, setCat, search, setSearch, onAdd, whatsapp }) {
+  const waDigits = (whatsapp || '').replace(/[^0-9]/g, '');
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
+      {waDigits && (
+        <a
+          href={`https://wa.me/${waDigits}?text=${encodeURIComponent('Hola, quiero consultar sobre un producto de Intensa Lencería')}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 px-4 py-3 rounded-full shadow-lg"
+          style={{ background: '#25D366', color: '#fff' }}
+        >
+          <MessageCircle size={20} />
+          <span className="text-sm font-semibold hidden sm:inline">Escríbenos</span>
+        </a>
+      )}
       <div className="text-center mb-6">
         <p style={{ fontFamily: "'Playfair Display', serif", fontStyle: 'italic', fontSize: 15, color: C.brownMid }}>
           Lencería Victoria's Secret &amp; Pink · Cremas y lociones corporales
@@ -1098,9 +1117,12 @@ function InventoryTab({ products, onUpdateProduct, onDeleteProduct, onAddProduct
           <table className="w-full text-xs">
             <thead>
               <tr style={{ background: C.creamAlt }}>
-                <th className="text-left p-2.5">Producto</th>
+                <th className="text-left p-2.5">Foto</th>
+                <th className="text-left p-2.5">Nombre</th>
+                <th className="text-left p-2.5">Color / aroma</th>
                 <th className="text-left p-2.5">Categoría</th>
                 <th className="text-left p-2.5">Tallas</th>
+                <th className="text-left p-2.5">Nota</th>
                 <th className="text-left p-2.5">Precio (Bs)</th>
                 <th className="text-left p-2.5">Stock</th>
                 <th className="p-2.5"></th>
@@ -1108,47 +1130,109 @@ function InventoryTab({ products, onUpdateProduct, onDeleteProduct, onAddProduct
             </thead>
             <tbody>
               {products.map((p) => (
-                <tr key={p.id} style={{ borderTop: `1px solid ${C.line}` }}>
-                  <td className="p-2.5">
-                    <div className="flex items-center gap-2">
-                      <ProductThumbUpload product={p} onUpdateProduct={onUpdateProduct} />
-                      <div>
-                        <p className="font-medium">{p.name}</p>
-                        <p className="opacity-60">{p.color}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="p-2.5 opacity-70">{p.cat}</td>
-                  <td className="p-2.5 opacity-70">{p.tallas.join(', ')}</td>
-                  <td className="p-2.5">
-                    <input
-                      type="number"
-                      value={p.price ?? ''}
-                      placeholder="—"
-                      onChange={(e) => onUpdateProduct(p.id, { price: e.target.value === '' ? null : Number(e.target.value) })}
-                      className="w-20 px-2 py-1 rounded-md"
-                      style={{ background: C.cream, border: `1px solid ${C.line}` }}
-                    />
-                  </td>
-                  <td className="p-2.5">
-                    <input
-                      type="number"
-                      value={p.stock}
-                      onChange={(e) => onUpdateProduct(p.id, { stock: Math.max(0, Number(e.target.value)) })}
-                      className="w-16 px-2 py-1 rounded-md"
-                      style={{ background: C.cream, border: `1px solid ${C.line}` }}
-                    />
-                  </td>
-                  <td className="p-2.5">
-                    <button onClick={() => onDeleteProduct(p.id)}><Trash2 size={14} style={{ color: C.danger }} /></button>
-                  </td>
-                </tr>
+                <ProductRow key={p.id} product={p} onUpdateProduct={onUpdateProduct} onDeleteProduct={onDeleteProduct} />
               ))}
             </tbody>
           </table>
         </div>
       </div>
     </div>
+  );
+}
+
+function ProductRow({ product, onUpdateProduct, onDeleteProduct }) {
+  const [draft, setDraft] = useState({
+    name: product.name,
+    color: product.color,
+    tallas: product.tallas.join(', '),
+    note: product.note || '',
+  });
+
+  const commit = (field, value) => {
+    if (field === 'tallas') {
+      onUpdateProduct(product.id, { tallas: value.split(',').map((t) => t.trim()).filter(Boolean) });
+    } else {
+      onUpdateProduct(product.id, { [field]: value });
+    }
+  };
+
+  const inputStyle = { background: C.cream, border: `1px solid ${C.line}` };
+
+  return (
+    <tr style={{ borderTop: `1px solid ${C.line}` }}>
+      <td className="p-2.5">
+        <ProductThumbUpload product={product} onUpdateProduct={onUpdateProduct} />
+      </td>
+      <td className="p-2.5">
+        <input
+          value={draft.name}
+          onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+          onBlur={(e) => commit('name', e.target.value)}
+          className="w-32 px-2 py-1 rounded-md"
+          style={inputStyle}
+        />
+      </td>
+      <td className="p-2.5">
+        <input
+          value={draft.color}
+          onChange={(e) => setDraft({ ...draft, color: e.target.value })}
+          onBlur={(e) => commit('color', e.target.value)}
+          className="w-28 px-2 py-1 rounded-md"
+          style={inputStyle}
+        />
+      </td>
+      <td className="p-2.5">
+        <select
+          value={product.cat}
+          onChange={(e) => onUpdateProduct(product.id, { cat: e.target.value })}
+          className="px-2 py-1 rounded-md"
+          style={inputStyle}
+        >
+          {CATEGORIES.filter((c) => c !== 'Todos').map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </td>
+      <td className="p-2.5">
+        <input
+          value={draft.tallas}
+          onChange={(e) => setDraft({ ...draft, tallas: e.target.value })}
+          onBlur={(e) => commit('tallas', e.target.value)}
+          placeholder="S, M, L"
+          className="w-24 px-2 py-1 rounded-md"
+          style={inputStyle}
+        />
+      </td>
+      <td className="p-2.5">
+        <input
+          value={draft.note}
+          onChange={(e) => setDraft({ ...draft, note: e.target.value })}
+          onBlur={(e) => commit('note', e.target.value)}
+          className="w-36 px-2 py-1 rounded-md"
+          style={inputStyle}
+        />
+      </td>
+      <td className="p-2.5">
+        <input
+          type="number"
+          value={product.price ?? ''}
+          placeholder="—"
+          onChange={(e) => onUpdateProduct(product.id, { price: e.target.value === '' ? null : Number(e.target.value) })}
+          className="w-20 px-2 py-1 rounded-md"
+          style={inputStyle}
+        />
+      </td>
+      <td className="p-2.5">
+        <input
+          type="number"
+          value={product.stock}
+          onChange={(e) => onUpdateProduct(product.id, { stock: Math.max(0, Number(e.target.value)) })}
+          className="w-16 px-2 py-1 rounded-md"
+          style={inputStyle}
+        />
+      </td>
+      <td className="p-2.5">
+        <button onClick={() => onDeleteProduct(product.id)}><Trash2 size={14} style={{ color: C.danger }} /></button>
+      </td>
+    </tr>
   );
 }
 
@@ -1251,11 +1335,13 @@ function DashboardTab({ totalRevenue, pendingCount, topProducts, catPie, pieColo
   );
 }
 
-function ConfigTab({ qrImage, bankNote, setBankNote, onQrUpload, onSaveBankNote, adminPin, onSavePin, csvStatus, onExportCSV, onImportCSV }) {
+function ConfigTab({ qrImage, bankNote, setBankNote, onQrUpload, onSaveBankNote, adminPin, onSavePin, whatsapp, onSaveWhatsapp, csvStatus, onExportCSV, onImportCSV }) {
   const fileRef = useRef(null);
   const csvFileRef = useRef(null);
   const [pinField, setPinField] = useState(adminPin);
   const [pinSaved, setPinSaved] = useState(false);
+  const [waField, setWaField] = useState(whatsapp);
+  const [waSaved, setWaSaved] = useState(false);
   return (
     <div className="max-w-md">
       <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, color: C.brownDark }} className="mb-4">Datos de pago</h2>
@@ -1279,6 +1365,28 @@ function ConfigTab({ qrImage, bankNote, setBankNote, onQrUpload, onSaveBankNote,
         <button onClick={onSaveBankNote} className="text-xs font-semibold px-3 py-2 rounded-full" style={{ background: C.roseDeep, color: C.white }}>
           Guardar nota
         </button>
+      </div>
+
+      <div className="rounded-xl p-4 mt-4" style={{ background: C.creamAlt, border: `1px solid ${C.line}` }}>
+        <p className="text-xs opacity-70 mb-2">Número de WhatsApp para contacto directo</p>
+        <p className="text-[11px] opacity-50 mb-2">Aparece como un botón flotante en la tienda. Escríbelo con código de país, solo números (ej: 59171234567).</p>
+        <div className="flex gap-2">
+          <input
+            value={waField}
+            onChange={(e) => { setWaField(e.target.value); setWaSaved(false); }}
+            placeholder="59171234567"
+            className="flex-1 px-3 py-2 rounded-lg text-xs outline-none"
+            style={{ background: C.cream, border: `1px solid ${C.line}` }}
+          />
+          <button
+            onClick={() => { onSaveWhatsapp(waField); setWaSaved(true); }}
+            className="text-xs font-semibold px-3 py-2 rounded-full"
+            style={{ background: C.brownDark, color: C.creamAlt }}
+          >
+            Guardar
+          </button>
+        </div>
+        {waSaved && <p className="text-[11px] mt-2" style={{ color: C.okText }}>Número actualizado</p>}
       </div>
 
       <div className="rounded-xl p-4 mt-4" style={{ background: C.creamAlt, border: `1px solid ${C.line}` }}>
