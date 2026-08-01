@@ -4,12 +4,10 @@ import {
   QrCode, Minus, ChevronRight, Search, Store, ClipboardList, Upload,
   AlertCircle, ArrowLeft, Sparkles, MessageCircle
 } from 'lucide-react';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend
-} from 'recharts';
 import { storage } from './storage.js';
 import { FaInstagram, FaTiktok, FaFacebook } from 'react-icons/fa6';
+
+const DashboardTab = React.lazy(() => import('./DashboardTab.jsx'));
 
 /* ---------------------------------------------------------------
    TOKENS
@@ -330,6 +328,7 @@ export default function App() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [confirmMsg, setConfirmMsg] = useState(null);
+  const [lastOrderWaLink, setLastOrderWaLink] = useState(null);
   const fileRef = useRef(null);
 
   /* ---------- load ---------- */
@@ -453,17 +452,33 @@ export default function App() {
       customer: form.name,
       phone: form.phone,
       address: form.address,
+      location: form.location || null, // {lat, lng} si eligió ubicación en el mapa
       ref: form.ref,
       items,
       total: items.reduce((s, i) => s + i.price * i.qty, 0),
       status: 'pendiente',
     };
     await saveOrders([order, ...orders]);
+
+    const waDigits = (whatsapp || '').replace(/[^0-9]/g, '');
+    if (waDigits) {
+      const lines = [
+        `Nuevo pedido de ${order.customer} (${order.phone})`,
+        ...items.map((i) => `• ${i.name} (${i.color}) talla ${i.talla} x${i.qty} - Bs ${(i.price * i.qty).toFixed(0)}`),
+        `Total: Bs ${order.total.toFixed(0)}`,
+        order.address ? `Dirección: ${order.address}` : null,
+        order.location ? `Ubicación GPS: https://maps.google.com/?q=${order.location.lat},${order.location.lng}` : null,
+      ].filter(Boolean);
+      setLastOrderWaLink(`https://wa.me/${waDigits}?text=${encodeURIComponent(lines.join('\n'))}`);
+    } else {
+      setLastOrderWaLink(null);
+    }
+
     setCart([]);
     setCheckoutOpen(false);
     setCartOpen(false);
     setConfirmMsg('¡Pedido registrado! Verificaremos tu pago y confirmaremos tu compra.');
-    setTimeout(() => setConfirmMsg(null), 5000);
+    setTimeout(() => { setConfirmMsg(null); setLastOrderWaLink(null); }, 12000);
   };
 
   const confirmOrder = async (orderId) => {
@@ -581,30 +596,77 @@ export default function App() {
               <Store size={16} /> Tienda
             </button>
             {view === 'tienda' && (
-              <button
-                onClick={() => setCartOpen(true)}
-                className="relative flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium ml-1"
-                style={{ background: C.rose, color: C.white }}
-              >
-                <ShoppingBag size={16} />
-                {cart.length > 0 && (
-                  <span
-                    className="absolute -top-1.5 -right-1.5 rounded-full text-[10px] font-bold w-5 h-5 flex items-center justify-center"
-                    style={{ background: C.roseDeep, color: C.white }}
-                  >
-                    {cart.reduce((s, i) => s + i.qty, 0)}
-                  </span>
-                )}
-              </button>
+              <>
+                <div className="hidden sm:flex items-center gap-1.5 mr-1">
+                  {SOCIAL_LINKS.map(({ name, url, Icon }) => (
+                    <a
+                      key={name}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={name}
+                      className="w-8 h-8 rounded-full flex items-center justify-center"
+                      style={{ background: C.cream, color: C.brownDark }}
+                    >
+                      <Icon size={14} />
+                    </a>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setCartOpen(true)}
+                  className="relative flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium ml-1"
+                  style={{ background: C.rose, color: C.white }}
+                >
+                  <ShoppingBag size={16} />
+                  {cart.length > 0 && (
+                    <span
+                      className="absolute -top-1.5 -right-1.5 rounded-full text-[10px] font-bold w-5 h-5 flex items-center justify-center"
+                      style={{ background: C.roseDeep, color: C.white }}
+                    >
+                      {cart.reduce((s, i) => s + i.qty, 0)}
+                    </span>
+                  )}
+                </button>
+              </>
             )}
           </nav>
         </div>
+        {view === 'tienda' && (
+          <div className="sm:hidden flex items-center justify-center gap-3 pb-2.5">
+            {SOCIAL_LINKS.map(({ name, url, Icon }) => (
+              <a
+                key={name}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={name}
+                className="w-7 h-7 rounded-full flex items-center justify-center"
+                style={{ background: C.cream, color: C.brownDark }}
+              >
+                <Icon size={13} />
+              </a>
+            ))}
+          </div>
+        )}
       </header>
 
       {confirmMsg && (
         <div className="max-w-6xl mx-auto px-4 pt-4">
-          <div className="flex items-center gap-2 px-4 py-3 rounded-lg text-sm" style={{ background: C.okBg, color: C.okText }}>
-            <Check size={16} /> {confirmMsg}
+          <div className="flex flex-wrap items-center gap-3 px-4 py-3 rounded-lg text-sm" style={{ background: C.okBg, color: C.okText }}>
+            <div className="flex items-center gap-2">
+              <Check size={16} /> {confirmMsg}
+            </div>
+            {lastOrderWaLink && (
+              <a
+                href={lastOrderWaLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
+                style={{ background: '#25D366', color: '#fff' }}
+              >
+                <MessageCircle size={14} /> Avisar por WhatsApp
+              </a>
+            )}
           </div>
         </div>
       )}
@@ -936,8 +998,10 @@ function ProductCard({ product, onAdd }) {
 /* ---------------------------------------------------------------
    CHECKOUT MODAL
 ---------------------------------------------------------------- */
+const LocationPicker = React.lazy(() => import('./LocationPicker.jsx'));
+
 function CheckoutModal({ total, qrImage, bankNote, onClose, onSubmit }) {
-  const [form, setForm] = useState({ name: '', phone: '', address: '', ref: '' });
+  const [form, setForm] = useState({ name: '', phone: '', address: '', ref: '', location: null });
   const canSubmit = form.name.trim() && form.phone.trim();
 
   return (
@@ -970,6 +1034,10 @@ function CheckoutModal({ total, qrImage, bankNote, onClose, onSubmit }) {
             className="w-full px-3 py-2.5 rounded-lg text-sm outline-none" style={{ background: C.cream, border: `1px solid ${C.line}` }} />
           <input placeholder="N° de referencia del comprobante (opcional)" value={form.ref} onChange={(e) => setForm({ ...form, ref: e.target.value })}
             className="w-full px-3 py-2.5 rounded-lg text-sm outline-none" style={{ background: C.cream, border: `1px solid ${C.line}` }} />
+
+          <React.Suspense fallback={<p className="text-xs opacity-60 text-center py-4">Cargando mapa...</p>}>
+            <LocationPicker value={form.location} onChange={(loc) => setForm({ ...form, location: loc })} />
+          </React.Suspense>
         </div>
 
         <div className="flex items-start gap-2 mt-3 text-[11px] opacity-70">
@@ -1025,7 +1093,11 @@ function AdminView(props) {
 
       {adminTab === 'inventario' && <InventoryTab {...props} />}
       {adminTab === 'pedidos' && <OrdersTab {...props} />}
-      {adminTab === 'dashboard' && <DashboardTab {...props} />}
+      {adminTab === 'dashboard' && (
+        <React.Suspense fallback={<p className="text-sm opacity-60">Cargando dashboard...</p>}>
+          <DashboardTab {...props} />
+        </React.Suspense>
+      )}
       {adminTab === 'config' && <ConfigTab {...props} />}
     </div>
   );
@@ -1314,57 +1386,6 @@ function OrdersTab({ orders, onConfirmOrder, onCancelOrder }) {
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-function DashboardTab({ totalRevenue, pendingCount, topProducts, catPie, pieColors }) {
-  return (
-    <div>
-      <div className="grid grid-cols-2 sm:grid-cols-2 gap-3 mb-6">
-        <div className="rounded-xl p-4" style={{ background: C.creamAlt, border: `1px solid ${C.line}` }}>
-          <p className="text-xs opacity-60 mb-1">Ingresos confirmados</p>
-          <p className="text-2xl font-bold" style={{ color: C.roseDeep, fontFamily: "'Playfair Display', serif" }}>Bs {totalRevenue.toFixed(0)}</p>
-        </div>
-        <div className="rounded-xl p-4" style={{ background: C.creamAlt, border: `1px solid ${C.line}` }}>
-          <p className="text-xs opacity-60 mb-1">Pedidos pendientes</p>
-          <p className="text-2xl font-bold" style={{ color: C.pendText, fontFamily: "'Playfair Display', serif" }}>{pendingCount}</p>
-        </div>
-      </div>
-
-      <div className="rounded-xl p-4 mb-6" style={{ background: C.creamAlt, border: `1px solid ${C.line}` }}>
-        <p className="text-sm font-semibold mb-3" style={{ color: C.brownDark }}>Productos más vendidos</p>
-        {topProducts.length === 0 ? (
-          <p className="text-xs opacity-60">Aún no hay ventas confirmadas.</p>
-        ) : (
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={topProducts} layout="vertical" margin={{ left: 10, right: 10 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={C.line} horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
-              <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={140} />
-              <Tooltip />
-              <Bar dataKey="qty" fill={C.roseDeep} radius={[0, 6, 6, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-
-      <div className="rounded-xl p-4" style={{ background: C.creamAlt, border: `1px solid ${C.line}` }}>
-        <p className="text-sm font-semibold mb-3" style={{ color: C.brownDark }}>Ingresos por categoría</p>
-        {catPie.length === 0 ? (
-          <p className="text-xs opacity-60">Aún no hay ventas confirmadas.</p>
-        ) : (
-          <ResponsiveContainer width="100%" height={240}>
-            <PieChart>
-              <Pie data={catPie} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={{ fontSize: 10 }}>
-                {catPie.map((_, i) => <Cell key={i} fill={pieColors[i % pieColors.length]} />)}
-              </Pie>
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        )}
-      </div>
     </div>
   );
 }
