@@ -244,9 +244,23 @@ function resizeImageFile(file) {
   });
 }
 
-// Para el QR usamos PNG (sin pérdida) en vez de JPEG: un código QR es blanco
-// y negro, así que PNG comprime muy bien igual, y evitamos que se vea
-// borroso o deje de poder escanearse por la compresión.
+// Para el QR preferimos PNG (sin pérdida): si es una captura de pantalla
+// limpia, queda nítido y pesa poco. Pero si es una FOTO del QR (con textura,
+// fondo, sombra, etc.), PNG puede pesar demasiado — en ese caso probamos con
+// JPEG de alta calidad, que para fotos comprime mucho mejor sin perder
+// nitidez del patrón blanco y negro.
+function drawQrCanvas(img, width) {
+  const scale = Math.min(1, width / img.width);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(img.width * scale));
+  canvas.height = Math.max(1, Math.round(img.height * scale));
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
 function resizeQrImage(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -255,24 +269,24 @@ function resizeQrImage(file) {
       img.onload = () => {
         const widths = [520, 420, 340, 260, 200];
         let result = null;
+
+        // Intento 1: PNG (ideal para capturas de pantalla limpias)
         for (const w of widths) {
-          const scale = Math.min(1, w / img.width);
-          const canvas = document.createElement('canvas');
-          canvas.width = Math.max(1, Math.round(img.width * scale));
-          canvas.height = Math.max(1, Math.round(img.height * scale));
-          const ctx = canvas.getContext('2d');
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          const candidate = canvas.toDataURL('image/png');
+          const candidate = drawQrCanvas(img, w).toDataURL('image/png');
           result = candidate;
-          if (candidate.length <= MAX_IMAGE_CHARS) break;
+          if (candidate.length <= MAX_IMAGE_CHARS) { resolve(candidate); return; }
         }
-        if (result.length > MAX_IMAGE_CHARS) {
-          reject(new Error('La imagen del QR sigue siendo muy pesada. Recórtala más de cerca (solo el cuadro del QR, sin fondo extra) y vuelve a intentar.'));
-          return;
+
+        // Intento 2: JPEG de alta calidad (mucho más liviano para fotos)
+        for (const w of widths) {
+          for (const q of [0.92, 0.85, 0.75, 0.65, 0.5]) {
+            const candidate = drawQrCanvas(img, w).toDataURL('image/jpeg', q);
+            result = candidate;
+            if (candidate.length <= MAX_IMAGE_CHARS) { resolve(candidate); return; }
+          }
         }
-        resolve(result);
+
+        reject(new Error('La imagen del QR sigue siendo muy pesada. Recórtala más de cerca (solo el cuadro del QR, sin fondo extra) y vuelve a intentar.'));
       };
       img.onerror = () => reject(new Error('No se pudo leer esa imagen.'));
       img.src = reader.result;
