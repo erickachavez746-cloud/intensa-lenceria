@@ -426,11 +426,13 @@ export default function App() {
         setOrders(o);
 
         if (conf) {
-          setQrImage(conf.qrImage || null);
-          setQrImageLociones(conf.qrImageLociones || null);
-          setBankNote(conf.bankNote || '');
-          setWhatsapp(conf.whatsapp || '');
-          setWhatsapp2(conf.whatsapp2 || '');
+          // Solo pisamos cada campo si el Sheet de verdad trajo algo — así una
+          // lectura fallida o incompleta nunca borra lo que ya estaba guardado.
+          if (conf.qrImage) setQrImage(conf.qrImage);
+          if (conf.qrImageLociones) setQrImageLociones(conf.qrImageLociones);
+          if (conf.bankNote) setBankNote(conf.bankNote);
+          if (conf.whatsapp) setWhatsapp(conf.whatsapp);
+          if (conf.whatsapp2) setWhatsapp2(conf.whatsapp2);
           // el PIN no viene del Sheet, se maneja aparte por dispositivo
         }
       } catch (e) {
@@ -553,7 +555,7 @@ export default function App() {
     if (waTargets.length > 0) {
       const lines = [
         `Nuevo pedido de ${order.customer} (${order.phone})`,
-        ...items.map((i) => `• ${i.name} (${i.color}) talla ${i.talla} x${i.qty} - Bs ${(i.price * i.qty).toFixed(0)}`),
+        ...items.map((i) => `• ${i.name} (${i.color})${i.talla ? ` talla ${i.talla}` : ''} x${i.qty} - Bs ${(i.price * i.qty).toFixed(0)}`),
         `Total: Bs ${order.total.toFixed(0)}`,
         order.address ? `Dirección: ${order.address}` : null,
         order.location ? `Ubicación GPS: https://maps.google.com/?q=${order.location.lat},${order.location.lng}` : null,
@@ -892,7 +894,7 @@ export default function App() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{i.product.name}</p>
-                        <p className="text-xs opacity-70">{i.product.color} · Talla {i.talla}</p>
+                        <p className="text-xs opacity-70">{i.product.color}{i.talla ? ` · Talla ${i.talla}` : ''}</p>
                         <p className="text-xs font-semibold mt-0.5" style={{ color: C.roseDeep }}>{bs(i.product.price)}</p>
                       </div>
                       <div className="flex items-center gap-1.5">
@@ -1144,9 +1146,9 @@ function ProductCard({ product, onAdd }) {
           >
             {product.tallas.map((t) => <option key={t} value={t}>Talla {t}</option>)}
           </select>
-        ) : (
+        ) : product.tallas.length === 1 ? (
           <p className="text-xs mb-2 opacity-70">Talla {product.tallas[0]}</p>
-        )}
+        ) : null}
 
         <div className="mt-auto flex items-center justify-between pt-1">
           <span className="text-sm font-bold" style={{ color: C.roseDeep }}>{bs(product.price)}</span>
@@ -1574,7 +1576,7 @@ function OrdersTab({ orders, onConfirmOrder, onCancelOrder }) {
           </div>
           <div className="text-xs opacity-80 space-y-0.5 mb-2">
             {o.items.map((it, idx) => (
-              <p key={idx}>· {it.name} ({it.color}) Talla {it.talla} × {it.qty} — Bs {(it.price * it.qty).toFixed(0)}</p>
+              <p key={idx}>· {it.name} ({it.color}){it.talla ? ` Talla ${it.talla}` : ''} × {it.qty} — Bs {(it.price * it.qty).toFixed(0)}</p>
             ))}
           </div>
           <div className="flex items-center justify-between">
