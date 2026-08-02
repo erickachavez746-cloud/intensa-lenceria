@@ -5,12 +5,20 @@
 
 const BASE_URL = import.meta.env.VITE_SHEETS_URL || '';
 
+// Quita las imágenes en base64 (muy largas) de los logs de diagnóstico,
+// para que los campos de texto (whatsapp, bankNote, etc.) sí se alcancen
+// a ver en la consola en vez de quedar tapados por el QR.
+function logSafe(text) {
+  const redacted = text.replace(/data:image\/[a-zA-Z]+;base64,[A-Za-z0-9+/=]+/g, '[imagen omitida]');
+  return redacted.length > 1200 ? redacted.slice(0, 1200) + '…' : redacted;
+}
+
 async function getRemote(type) {
   if (!BASE_URL) return null;
   try {
     const res = await fetch(`${BASE_URL}?type=${type}`);
     const text = await res.text();
-    console.log(`[INTENSA-SYNC] GET ${type} → status ${res.status}`, text.slice(0, 300));
+    console.log(`[INTENSA-SYNC] GET ${type} → status ${res.status}`, logSafe(text));
     if (!res.ok) return null;
     const data = JSON.parse(text);
     return data.ok ? data.data : null;
@@ -30,7 +38,7 @@ async function setRemote(type, data) {
       body: JSON.stringify({ type, data }),
     });
     const text = await res.text();
-    console.log(`[INTENSA-SYNC] POST ${type} → status ${res.status}`, text.slice(0, 300));
+    console.log(`[INTENSA-SYNC] POST ${type} → status ${res.status}`, logSafe(text));
     const json = JSON.parse(text);
     return !!json.ok;
   } catch (e) {

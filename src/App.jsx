@@ -946,10 +946,9 @@ export default function App() {
 function StoreView({ products, cat, setCat, search, setSearch, onAdd, whatsapp, whatsapp2 }) {
   const digits1 = String(whatsapp || '').replace(/[^0-9]/g, '');
   const digits2 = String(whatsapp2 || '').replace(/[^0-9]/g, '');
-  const showSecond = cat === 'Cremas y Lociones Corporales' && digits2;
   const waButtons = [
-    digits1 && { digits: digits1, label: showSecond ? 'Lencería' : 'Escríbenos', text: 'Hola, quiero consultar sobre un producto de Intensa Lencería' },
-    showSecond && { digits: digits2, label: 'Cremas y lociones', text: 'Hola, quiero consultar sobre una crema o loción de Intensa Lencería' },
+    digits1 && { digits: digits1, label: digits2 ? 'Lencería' : 'Escríbenos', text: 'Hola, quiero consultar sobre un producto de Intensa Lencería' },
+    digits2 && { digits: digits2, label: 'Cremas y lociones', text: 'Hola, quiero consultar sobre una crema o loción de Intensa Lencería' },
   ].filter(Boolean);
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
@@ -1652,22 +1651,28 @@ function ConfigTab({ qrImage, qrImageLociones, bankNote, setBankNote, onQrUpload
 
       <div className="rounded-xl p-4 mt-4" style={{ background: C.creamAlt, border: `1px solid ${C.line}` }}>
         <p className="text-xs opacity-70 mb-2">Números de WhatsApp para contacto directo</p>
-        <p className="text-[11px] opacity-50 mb-2">Aparecen como botones flotantes en la tienda, y también reciben el aviso de pedidos nuevos. Código de país, solo números (ej: 59171234567). El segundo es opcional.</p>
+        <p className="text-[11px] opacity-50 mb-2">Aparecen como botones flotantes en la tienda, y también reciben el aviso de pedidos nuevos según la categoría comprada. Código de país, solo números (ej: 59171234567).</p>
         <div className="space-y-2 mb-2">
-          <input
-            value={waField}
-            onChange={(e) => { setWaField(e.target.value); setWaSaved(false); }}
-            placeholder="59171234567 (principal)"
-            className="w-full px-3 py-2 rounded-lg text-xs outline-none"
-            style={{ background: C.cream, border: `1px solid ${C.line}` }}
-          />
-          <input
-            value={waField2}
-            onChange={(e) => { setWaField2(e.target.value); setWaSaved(false); }}
-            placeholder="59178945612 (opcional)"
-            className="w-full px-3 py-2 rounded-lg text-xs outline-none"
-            style={{ background: C.cream, border: `1px solid ${C.line}` }}
-          />
+          <div>
+            <p className="text-[11px] font-semibold mb-1" style={{ color: C.brownDark }}>Lencería (número principal)</p>
+            <input
+              value={waField}
+              onChange={(e) => { setWaField(e.target.value); setWaSaved(false); }}
+              placeholder="59171234567"
+              className="w-full px-3 py-2 rounded-lg text-xs outline-none"
+              style={{ background: C.cream, border: `1px solid ${C.line}` }}
+            />
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold mb-1" style={{ color: C.brownDark }}>Cremas y Lociones Corporales (opcional)</p>
+            <input
+              value={waField2}
+              onChange={(e) => { setWaField2(e.target.value); setWaSaved(false); }}
+              placeholder="59178945612"
+              className="w-full px-3 py-2 rounded-lg text-xs outline-none"
+              style={{ background: C.cream, border: `1px solid ${C.line}` }}
+            />
+          </div>
         </div>
         <button
           onClick={async () => { await onSaveWhatsapp(waField, waField2); setWaSaved(true); }}
