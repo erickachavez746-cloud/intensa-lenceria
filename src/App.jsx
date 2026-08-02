@@ -540,7 +540,16 @@ export default function App() {
     };
     await saveOrders([order, ...orders]);
 
-    const waTargets = [whatsapp, whatsapp2].map((n) => String(n || '').replace(/[^0-9]/g, '')).filter(Boolean);
+    const hasLociones = items.some((i) => i.cat === 'Cremas y Lociones Corporales');
+    const hasLenceria = items.some((i) => i.cat !== 'Cremas y Lociones Corporales');
+    const waTargets = [];
+    if (hasLenceria) { const d = String(whatsapp || '').replace(/[^0-9]/g, ''); if (d) waTargets.push(d); }
+    if (hasLociones) { const d = String(whatsapp2 || '').replace(/[^0-9]/g, ''); if (d) waTargets.push(d); }
+    // si no hay número específico para lo que se pidió, usamos el que sí esté configurado
+    if (waTargets.length === 0) {
+      const fallback = String(whatsapp || whatsapp2 || '').replace(/[^0-9]/g, '');
+      if (fallback) waTargets.push(fallback);
+    }
     if (waTargets.length > 0) {
       const lines = [
         `Nuevo pedido de ${order.customer} (${order.phone})`,
@@ -933,26 +942,28 @@ export default function App() {
    STORE VIEW
 ---------------------------------------------------------------- */
 function StoreView({ products, cat, setCat, search, setSearch, onAdd, whatsapp, whatsapp2 }) {
-  const waNumbers = [whatsapp, whatsapp2]
-    .map((n) => String(n || '').replace(/[^0-9]/g, ''))
-    .filter(Boolean);
+  const digits1 = String(whatsapp || '').replace(/[^0-9]/g, '');
+  const digits2 = String(whatsapp2 || '').replace(/[^0-9]/g, '');
+  const showSecond = cat === 'Cremas y Lociones Corporales' && digits2;
+  const waButtons = [
+    digits1 && { digits: digits1, label: showSecond ? 'Lencería' : 'Escríbenos', text: 'Hola, quiero consultar sobre un producto de Intensa Lencería' },
+    showSecond && { digits: digits2, label: 'Cremas y lociones', text: 'Hola, quiero consultar sobre una crema o loción de Intensa Lencería' },
+  ].filter(Boolean);
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
-      {waNumbers.length > 0 && (
+      {waButtons.length > 0 && (
         <div className="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2">
-          {waNumbers.map((digits, i) => (
+          {waButtons.map((btn) => (
             <a
-              key={digits}
-              href={`https://wa.me/${digits}?text=${encodeURIComponent('Hola, quiero consultar sobre un producto de Intensa Lencería')}`}
+              key={btn.digits + btn.label}
+              href={`https://wa.me/${btn.digits}?text=${encodeURIComponent(btn.text)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 px-4 py-3 rounded-full shadow-lg"
               style={{ background: '#25D366', color: '#fff' }}
             >
               <MessageCircle size={20} />
-              <span className="text-sm font-semibold hidden sm:inline">
-                {waNumbers.length > 1 ? `Escríbenos ${i + 1}` : 'Escríbenos'}
-              </span>
+              <span className="text-sm font-semibold hidden sm:inline">{btn.label}</span>
             </a>
           ))}
         </div>
@@ -1037,9 +1048,29 @@ function ProductCard({ product, onAdd }) {
   const [activeImg, setActiveImg] = useState(0);
   const outOfStock = product.stock <= 0;
   const images = [product.image, product.image2].filter(Boolean);
+
+  const touchStartX = useRef(null);
+  const handleTouchStart = (e) => { touchStartX.current = e.touches[0].clientX; };
+  const handleTouchEnd = (e) => {
+    if (touchStartX.current === null || images.length < 2) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    if (Math.abs(dx) > 30) {
+      setActiveImg((i) => {
+        if (dx < 0) return Math.min(i + 1, images.length - 1); // deslizó a la izquierda → siguiente
+        return Math.max(i - 1, 0); // deslizó a la derecha → anterior
+      });
+    }
+    touchStartX.current = null;
+  };
+
   return (
     <div className="rounded-2xl overflow-hidden flex flex-col" style={{ background: C.creamAlt, border: `1px solid ${C.line}` }}>
-      <div className="h-28 flex items-center justify-center overflow-hidden relative" style={{ background: swatchColor(product) + '33' }}>
+      <div
+        className="h-28 flex items-center justify-center overflow-hidden relative"
+        style={{ background: swatchColor(product) + '33' }}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
         {images.length > 0 ? (
           <button
             onClick={() => setLightboxOpen(true)}
@@ -1069,6 +1100,8 @@ function ProductCard({ product, onAdd }) {
           className="fixed inset-0 z-50 flex items-center justify-center p-6"
           style={{ background: 'rgba(43,33,24,0.85)' }}
           onClick={() => setLightboxOpen(false)}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
         >
           <button
             onClick={() => setLightboxOpen(false)}
@@ -1336,6 +1369,10 @@ function ProductThumbUpload({ product, onUpdateProduct }) {
   );
 }
 
+function defaultTallaForCat() {
+  return ''; // se deja en blanco: cada producto puede tener una medida distinta (ml, g, etc.)
+}
+
 function InventoryTab({ products, onUpdateProduct, onDeleteProduct, onAddProduct }) {
   const [showForm, setShowForm] = useState(false);
   const [newP, setNewP] = useState({ cat: 'Tanguita VS', name: '', color: '', tallas: '', price: '', stock: 1, note: '' });
@@ -1363,7 +1400,12 @@ function InventoryTab({ products, onUpdateProduct, onDeleteProduct, onAddProduct
 
       {showForm && (
         <div className="rounded-xl p-4 mb-4 grid grid-cols-2 sm:grid-cols-3 gap-2" style={{ background: C.creamAlt, border: `1px solid ${C.line}` }}>
-          <select value={newP.cat} onChange={(e) => setNewP({ ...newP, cat: e.target.value })} className="px-2 py-2 rounded-md text-xs" style={{ background: C.cream, border: `1px solid ${C.line}` }}>
+          <select
+            value={newP.cat}
+            onChange={(e) => setNewP({ ...newP, cat: e.target.value, tallas: defaultTallaForCat(e.target.value) })}
+            className="px-2 py-2 rounded-md text-xs"
+            style={{ background: C.cream, border: `1px solid ${C.line}` }}
+          >
             {CATEGORIES.filter((c) => c !== 'Todos').map((c) => <option key={c}>{c}</option>)}
           </select>
           <input placeholder="Nombre" value={newP.name} onChange={(e) => setNewP({ ...newP, name: e.target.value })} className="px-2 py-2 rounded-md text-xs" style={{ background: C.cream, border: `1px solid ${C.line}` }} />
@@ -1448,7 +1490,13 @@ function ProductRow({ product, onUpdateProduct, onDeleteProduct }) {
       <td className="p-2.5">
         <select
           value={product.cat}
-          onChange={(e) => onUpdateProduct(product.id, { cat: e.target.value })}
+          onChange={(e) => {
+            const newCat = e.target.value;
+            if (newCat !== product.cat) {
+              onUpdateProduct(product.id, { cat: newCat, tallas: [] });
+              setDraft({ ...draft, tallas: '' });
+            }
+          }}
           className="px-2 py-1 rounded-md"
           style={inputStyle}
         >
