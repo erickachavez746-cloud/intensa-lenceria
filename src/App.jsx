@@ -591,6 +591,36 @@ export default function App() {
     await saveOrders(orders.map((o) => o.id === orderId ? { ...o, status: 'cancelado' } : o));
   };
 
+  // Para ventas que llegaron por Instagram, WhatsApp, en persona, etc. —
+  // no pasan por el checkout de la tienda, pero igual deben descontar
+  // stock y contar en el Dashboard como una venta confirmada.
+  const registerManualSale = async (productId, talla, qty, channel) => {
+    const product = products.find((p) => p.id === productId);
+    if (!product || qty <= 0) return false;
+
+    const nextProducts = products.map((p) =>
+      p.id === productId ? { ...p, stock: Math.max(0, p.stock - qty) } : p
+    );
+    await saveProducts(nextProducts);
+
+    const order = {
+      id: uid(),
+      date: new Date().toISOString(),
+      customer: channel || 'Venta manual',
+      phone: '',
+      address: '',
+      ref: '',
+      items: [{
+        productId: product.id, name: product.name, color: product.color,
+        cat: product.cat, talla: talla || '', qty, price: product.price || 0,
+      }],
+      total: (product.price || 0) * qty,
+      status: 'confirmado',
+    };
+    await saveOrders([order, ...orders]);
+    return true;
+  };
+
   /* ---------- inventory admin ---------- */
   const updateProduct = async (id, patch) => {
     return saveProducts(products.map((p) => p.id === id ? { ...p, ...patch } : p));
@@ -843,6 +873,7 @@ export default function App() {
           onAddProduct={addProduct}
           onConfirmOrder={confirmOrder}
           onCancelOrder={cancelOrder}
+          onRegisterManualSale={registerManualSale}
           totalRevenue={totalRevenue}
           pendingCount={pendingOrders.length}
           topProducts={topProducts}
@@ -1549,19 +1580,125 @@ function ProductRow({ product, onUpdateProduct, onDeleteProduct }) {
   );
 }
 
-function OrdersTab({ orders, onConfirmOrder, onCancelOrder }) {
+function ManualSaleForm({ products, onRegisterManualSale }) {
+  const [open, setOpen] = useState(false);
+  const availableProducts = products.filter((p) => p.stock > 0);
+  const [productId, setProductId] = useState('');
+  const [talla, setTalla] = useState('');
+  const [qty, setQty] = useState(1);
+  const [channel, setChannel] = useState('Instagram');
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const selected = products.find((p) => p.id === productId);
+
+  const submit = async () => {
+    if (!selected || qty <= 0) return;
+    setSaving(true);
+    setMsg(null);
+    const ok = await onRegisterManualSale(productId, talla, Number(qty), channel);
+    setSaving(false);
+    if (ok) {
+      setMsg({ ok: true, text: 'Venta registrada — ya se descontó del inventario.' });
+      setProductId(''); setTalla(''); setQty(1);
+    } else {
+      setMsg({ ok: false, text: 'No se pudo registrar. Intenta de nuevo.' });
+    }
+  };
+
+  return (
+    <div className="rounded-xl p-4 mb-4" style={{ background: C.creamAlt, border: `1px solid ${C.line}` }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full"
+        style={{ background: C.roseDeep, color: C.white }}
+      >
+        <Plus size={13} /> Registrar venta manual (redes sociales, en persona, etc.)
+      </button>
+
+      {open && (
+        <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <select
+            value={productId}
+            onChange={(e) => { setProductId(e.target.value); setTalla(''); }}
+            className="col-span-2 px-2 py-2 rounded-md text-xs"
+            style={{ background: C.cream, border: `1px solid ${C.line}` }}
+          >
+            <option value="">Elegir producto...</option>
+            {availableProducts.map((p) => (
+              <option key={p.id} value={p.id}>{p.name} ({p.color}) — stock {p.stock}</option>
+            ))}
+          </select>
+
+          {selected && selected.tallas.length > 0 ? (
+            <select
+              value={talla}
+              onChange={(e) => setTalla(e.target.value)}
+              className="px-2 py-2 rounded-md text-xs"
+              style={{ background: C.cream, border: `1px solid ${C.line}` }}
+            >
+              <option value="">Talla...</option>
+              {selected.tallas.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          ) : <div />}
+
+          <input
+            type="number"
+            min={1}
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+            placeholder="Cantidad"
+            className="px-2 py-2 rounded-md text-xs"
+            style={{ background: C.cream, border: `1px solid ${C.line}` }}
+          />
+
+          <select
+            value={channel}
+            onChange={(e) => setChannel(e.target.value)}
+            className="px-2 py-2 rounded-md text-xs"
+            style={{ background: C.cream, border: `1px solid ${C.line}` }}
+          >
+            <option>Instagram</option>
+            <option>TikTok</option>
+            <option>Facebook</option>
+            <option>WhatsApp</option>
+            <option>En persona</option>
+            <option>Otro</option>
+          </select>
+
+          <button
+            onClick={submit}
+            disabled={!selected || saving}
+            className="px-3 py-2 rounded-md text-xs font-semibold disabled:opacity-40"
+            style={{ background: C.brownDark, color: C.creamAlt }}
+          >
+            {saving ? 'Guardando...' : 'Registrar venta'}
+          </button>
+
+          {msg && (
+            <p className="col-span-2 sm:col-span-4 text-[11px]" style={{ color: msg.ok ? C.okText : C.danger }}>{msg.text}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OrdersTab({ orders, onConfirmOrder, onCancelOrder, products, onRegisterManualSale }) {
   const statusStyle = (s) => s === 'confirmado'
     ? { background: C.okBg, color: C.okText }
     : s === 'cancelado'
     ? { background: '#F0E3E1', color: C.danger }
     : { background: C.pendBg, color: C.pendText };
 
-  if (orders.length === 0) {
-    return <p className="text-sm opacity-60 py-10 text-center">Aún no hay pedidos registrados.</p>;
-  }
-
   return (
-    <div className="space-y-3">
+    <div>
+      <ManualSaleForm products={products} onRegisterManualSale={onRegisterManualSale} />
+
+      {orders.length === 0 ? (
+        <p className="text-sm opacity-60 py-10 text-center">Aún no hay pedidos registrados.</p>
+      ) : (
+      <div className="space-y-3">
       {orders.map((o) => (
         <div key={o.id} className="rounded-xl p-4" style={{ background: C.creamAlt, border: `1px solid ${C.line}` }}>
           <div className="flex items-start justify-between mb-2">
@@ -1593,6 +1730,8 @@ function OrdersTab({ orders, onConfirmOrder, onCancelOrder }) {
           </div>
         </div>
       ))}
+      </div>
+      )}
     </div>
   );
 }
