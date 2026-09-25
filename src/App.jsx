@@ -667,25 +667,42 @@ export default function App() {
   };
 
   /* ---------- derived: dashboard ---------- */
+  const isCremas = (catName) => catName === 'Cremas y Lociones Corporales';
   const confirmedOrders = orders.filter((o) => o.status === 'confirmado');
   const pendingOrders = orders.filter((o) => o.status === 'pendiente');
   const totalRevenue = confirmedOrders.reduce((s, o) => s + o.total, 0);
 
-  const productSales = {};
-  confirmedOrders.forEach((o) => o.items.forEach((it) => {
-    const key = `${it.name} (${it.color})`;
-    productSales[key] = (productSales[key] || 0) + it.qty;
-  }));
-  const topProducts = Object.entries(productSales)
-    .map(([name, qty]) => ({ name, qty }))
-    .sort((a, b) => b.qty - a.qty)
-    .slice(0, 6);
+  function buildDashboardData(group) {
+    // group: 'lenceria' | 'cremas' -> filtra items por esa mitad del negocio
+    const matchesGroup = (it) => (group === 'cremas' ? isCremas(it.cat) : !isCremas(it.cat));
 
-  const catSales = {};
-  confirmedOrders.forEach((o) => o.items.forEach((it) => {
-    catSales[it.cat] = (catSales[it.cat] || 0) + it.qty * it.price;
-  }));
-  const catPie = Object.entries(catSales).map(([name, value]) => ({ name, value }));
+    let revenue = 0;
+    const productSales = {};
+    confirmedOrders.forEach((o) => o.items.forEach((it) => {
+      if (!matchesGroup(it)) return;
+      revenue += it.qty * it.price;
+      const key = `${it.name} (${it.color})`;
+      productSales[key] = (productSales[key] || 0) + it.qty;
+    }));
+    const topProducts = Object.entries(productSales)
+      .map(([name, qty]) => ({ name, qty }))
+      .sort((a, b) => b.qty - a.qty)
+      .slice(0, 6);
+
+    const catSales = {};
+    confirmedOrders.forEach((o) => o.items.forEach((it) => {
+      if (!matchesGroup(it)) return;
+      catSales[it.cat] = (catSales[it.cat] || 0) + it.qty * it.price;
+    }));
+    const catPie = Object.entries(catSales).map(([name, value]) => ({ name, value }));
+
+    const pendingCount = pendingOrders.filter((o) => o.items.some(matchesGroup)).length;
+
+    return { totalRevenue: revenue, pendingCount, topProducts, catPie };
+  }
+
+  const dashboardLenceria = buildDashboardData('lenceria');
+  const dashboardCremas = buildDashboardData('cremas');
   const PIE_COLORS = [C.rose, C.gold, C.brownMid, C.roseDeep, C.brownDark, '#8CA37D'];
 
   const filteredProducts = products.filter((p) => {
@@ -875,9 +892,8 @@ export default function App() {
           onCancelOrder={cancelOrder}
           onRegisterManualSale={registerManualSale}
           totalRevenue={totalRevenue}
-          pendingCount={pendingOrders.length}
-          topProducts={topProducts}
-          catPie={catPie}
+          dashboardLenceria={dashboardLenceria}
+          dashboardCremas={dashboardCremas}
           pieColors={PIE_COLORS}
           qrImage={qrImage}
           qrImageLociones={qrImageLociones}

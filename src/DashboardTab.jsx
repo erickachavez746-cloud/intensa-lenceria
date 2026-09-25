@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
@@ -22,7 +22,7 @@ const C = {
   pendText: '#8A5A20',
 };
 
-export default function DashboardTab({ totalRevenue, pendingCount, topProducts, catPie, pieColors }) {
+function DashboardBlock({ totalRevenue, pendingCount, topProducts, catPie, pieColors, showCatPie }) {
   return (
     <div>
       <div className="grid grid-cols-2 sm:grid-cols-2 gap-3 mb-6">
@@ -53,22 +53,65 @@ export default function DashboardTab({ totalRevenue, pendingCount, topProducts, 
         )}
       </div>
 
-      <div className="rounded-xl p-4" style={{ background: C.creamAlt, border: `1px solid ${C.line}` }}>
-        <p className="text-sm font-semibold mb-3" style={{ color: C.brownDark }}>Ingresos por categoría</p>
-        {catPie.length === 0 ? (
-          <p className="text-xs opacity-60">Aún no hay ventas confirmadas.</p>
-        ) : (
-          <ResponsiveContainer width="100%" height={240}>
-            <PieChart>
-              <Pie data={catPie} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={{ fontSize: 10 }}>
-                {catPie.map((_, i) => <Cell key={i} fill={pieColors[i % pieColors.length]} />)}
-              </Pie>
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        )}
+      {showCatPie && (
+        <div className="rounded-xl p-4" style={{ background: C.creamAlt, border: `1px solid ${C.line}` }}>
+          <p className="text-sm font-semibold mb-3" style={{ color: C.brownDark }}>Ingresos por categoría</p>
+          {catPie.length === 0 ? (
+            <p className="text-xs opacity-60">Aún no hay ventas confirmadas.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <PieChart>
+                <Pie data={catPie} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={{ fontSize: 10 }}>
+                  {catPie.map((_, i) => <Cell key={i} fill={pieColors[i % pieColors.length]} />)}
+                </Pie>
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function DashboardTab({ dashboardLenceria, dashboardCremas, pieColors }) {
+  const [section, setSection] = useState('lenceria');
+
+  const sections = [
+    { id: 'lenceria', label: 'Lencería' },
+    { id: 'cremas', label: 'Cremas y lociones' },
+  ];
+
+  const data = section === 'cremas' ? dashboardCremas : dashboardLenceria;
+
+  return (
+    <div>
+      <div className="flex gap-2 mb-5">
+        {sections.map((s) => (
+          <button
+            key={s.id}
+            onClick={() => setSection(s.id)}
+            className="px-4 py-2 rounded-full text-xs font-semibold"
+            style={{
+              background: section === s.id ? C.roseDeep : C.creamAlt,
+              color: section === s.id ? C.white : C.brownDark,
+              border: `1px solid ${section === s.id ? C.roseDeep : C.line}`,
+            }}
+          >
+            {s.label}
+          </button>
+        ))}
       </div>
+
+      <DashboardBlock
+        totalRevenue={data.totalRevenue}
+        pendingCount={data.pendingCount}
+        topProducts={data.topProducts}
+        catPie={data.catPie}
+        pieColors={pieColors}
+        showCatPie={section === 'lenceria'}
+      />
     </div>
   );
 }
